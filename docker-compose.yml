@@ -1,0 +1,20 @@
+services:
+  traefik:
+    image: traefik:v3.3
+    container_name: hermes-traefik
+    ports:
+      - "80:80"
+      - "8080:8080"   # dashboard (dev only)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infra/traefik/dynamic:/etc/traefik/dynamic:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # Linux compat
+    networks:
+      - hermes-network
+
+networks:
+  hermes-network:
+    name: hermes-network
+    driver: bridge

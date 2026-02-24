@@ -1,0 +1,7 @@
+# Nested repos — tracked independently, not part of this repo
+hermes_backend/
+hermes-fe/
+
+# OS
+.DS_Store
+.idea/

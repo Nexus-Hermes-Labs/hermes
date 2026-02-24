@@ -1,0 +1,98 @@
+http:
+  middlewares:
+    jwt-auth:
+      forwardAuth:
+        address: "http://host.docker.internal:8081/internal/verify"
+        authResponseHeaders:
+          - "X-User-Id"
+          - "X-User-Role"
+          - "X-User-Email"
+
+    rate-limit:
+      rateLimit:
+        average: 100
+        burst: 50
+
+  routers:
+    # Auth routes — public, no JWT check
+    auth-public:
+      rule: "PathPrefix(`/api/v1/auth`)"
+      entryPoints:
+        - web
+      middlewares:
+        - rate-limit
+      service: auth-service
+      priority: 20
+
+    # User service — protected
+    user-service:
+      rule: "PathPrefix(`/api/v1/users`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: user-service
+      priority: 20
+
+    # Channel routes nested under guilds (higher priority to match first)
+    channel-nested:
+      rule: "PathRegexp(`^/api/v1/guilds/[^/]+/channels`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: channel-service
+      priority: 30
+
+    # Channel service — protected
+    channel-service:
+      rule: "PathPrefix(`/api/v1/channels`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: channel-service
+      priority: 20
+
+    # Guild service — protected (guilds + invites)
+    guild-service:
+      rule: "PathPrefix(`/api/v1/guilds`) || PathPrefix(`/api/v1/invites`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: guild-service
+      priority: 20
+
+    # Swagger UI — public, no auth
+    swagger-auth:
+      rule: "PathPrefix(`/swagger-ui`) && HeaderRegexp(`X-Forwarded-Host`, `.*8081.*`) || PathPrefix(`/api-docs`)"
+      entryPoints:
+        - web
+      service: auth-service
+      priority: 10
+
+  services:
+    auth-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8081"
+
+    user-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8082"
+
+    channel-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8083"
+
+    guild-service:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8086"
