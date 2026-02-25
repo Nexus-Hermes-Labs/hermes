@@ -9,12 +9,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
       - ./infra/traefik/dynamic:/etc/traefik/dynamic:ro
-    extra_hosts:
-      - "host.docker.internal:host-gateway"   # Linux compat
     networks:
       - hermes-network
 
 networks:
   hermes-network:
-    name: hermes-network
-    driver: bridge
+    external: true

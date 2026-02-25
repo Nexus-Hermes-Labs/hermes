@@ -2,7 +2,7 @@ http:
   middlewares:
     jwt-auth:
       forwardAuth:
-        address: "http://host.docker.internal:8081/internal/verify"
+        address: "http://hermes-auth-service:8081/internal/verify"
         authResponseHeaders:
           - "X-User-Id"
           - "X-User-Role"
@@ -80,19 +80,19 @@ http:
     auth-service:
       loadBalancer:
         servers:
-          - url: "http://host.docker.internal:8081"
+          - url: "http://hermes-auth-service:8081"
 
     user-service:
       loadBalancer:
         servers:
-          - url: "http://host.docker.internal:8082"
+          - url: "http://hermes-user-service:8082"
 
     channel-service:
       loadBalancer:
         servers:
-          - url: "http://host.docker.internal:8083"
+          - url: "http://hermes-channel-service:8083"
 
     guild-service:
       loadBalancer:
         servers:
-          - url: "http://host.docker.internal:8086"
+          - url: "http://hermes-guild-service:8086"
