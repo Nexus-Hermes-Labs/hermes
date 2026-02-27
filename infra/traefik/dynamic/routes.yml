@@ -46,6 +46,39 @@ http:
       service: channel-service
       priority: 30
 
+    # Messaging: channel messages — must match before channel-service (higher priority)
+    messaging-channel-messages:
+      rule: "PathRegexp(`^/api/v1/channels/[^/]+/messages`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: messaging-service
+      priority: 40
+
+    # Messaging: /api/v1/messages/:id (edit/delete) and reactions
+    messaging-messages:
+      rule: "PathPrefix(`/api/v1/messages`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: messaging-service
+      priority: 40
+
+    # Messaging: /api/v1/conversations (DMs, group DMs)
+    messaging-conversations:
+      rule: "PathPrefix(`/api/v1/conversations`)"
+      entryPoints:
+        - web
+      middlewares:
+        - jwt-auth
+        - rate-limit
+      service: messaging-service
+      priority: 20
+
     # Channel service — protected
     channel-service:
       rule: "PathPrefix(`/api/v1/channels`)"
@@ -96,3 +129,8 @@ http:
       loadBalancer:
         servers:
           - url: "http://hermes-guild-service:8086"
+
+    messaging-service:
+      loadBalancer:
+        servers:
+          - url: "http://hermes-messaging-service:8084"
