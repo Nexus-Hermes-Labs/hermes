@@ -44,7 +44,7 @@ hermes/
 | `voice-service` | 8085 | — | Stubbed | WebRTC signalling |
 | `guild-service` | 8086 | — | ~40% | Guild CRUD, member management, invite links |
 | `presence-service` | 8087 | — | Stubbed | Online/offline/away tracking via Redis |
-| `realtime-service` | 8080 | — | Stubbed | WebSocket gateway, NATS fanout to clients |
+| `realtime-service` | 8092 | — | Stubbed | WebSocket gateway, NATS fanout to clients |
 | `media-service` | 8088 | — | Stubbed | File uploads, avatar storage |
 | `notification-service` | 8089 | — | Stubbed | Push notifications |
 | `search-service` | 8090 | — | Stubbed | Full-text search |

@@ -101,6 +101,16 @@ http:
       service: guild-service
       priority: 20
 
+    # Realtime WebSocket — JWT validated inside the service from ?token= query param
+    realtime-ws:
+      rule: "Path(`/ws`)"
+      entryPoints:
+        - web
+      middlewares:
+        - rate-limit
+      service: realtime-service
+      priority: 50
+
     # Swagger UI — public, no auth
     swagger-auth:
       rule: "PathPrefix(`/swagger-ui`) && HeaderRegexp(`X-Forwarded-Host`, `.*8081.*`) || PathPrefix(`/api-docs`)"
@@ -134,3 +144,8 @@ http:
       loadBalancer:
         servers:
           - url: "http://hermes-messaging-service:8084"
+
+    realtime-service:
+      loadBalancer:
+        servers:
+          - url: "http://hermes-realtime-service:8092"
