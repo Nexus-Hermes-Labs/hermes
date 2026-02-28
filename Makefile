@@ -132,6 +132,7 @@ restart: down up ## Restart all services (dev mode)
 
 clean: ## Remove all containers, volumes, and the shared network
 	@echo -e "$(RED)Cleaning up all Docker resources...$(NC)"
+	@docker ps -aq --filter name=hermes | xargs -r docker rm -f 2>/dev/null || true
 	@$(COMPOSE_FE_DEV)  down -v 2>/dev/null || true
 	@$(COMPOSE_FE_PROD) down -v 2>/dev/null || true
 	@$(COMPOSE_BACKEND) down -v
