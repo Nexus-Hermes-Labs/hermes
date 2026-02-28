@@ -1,5 +1,5 @@
 # Nested repos — tracked independently, not part of this repo
-hermes_backend/
+hermes-be/
 hermes-fe/
 
 # OS

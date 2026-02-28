@@ -21,7 +21,7 @@ NC     := \033[0m
 # ── Compose shortcuts ─────────────────────────────────────────────────────────
 DC              := docker compose
 COMPOSE_TRAEFIK := $(DC) -f docker-compose.yml
-COMPOSE_BACKEND := $(DC) -f hermes_backend/docker-compose.yml
+COMPOSE_BACKEND := $(DC) -f hermes-be/docker-compose.yml
 COMPOSE_FE_DEV  := $(DC) -f hermes-fe/docker-compose.yml --profile dev
 COMPOSE_FE_PROD := $(DC) -f hermes-fe/docker-compose.yml --profile prod
 
@@ -51,10 +51,10 @@ install: ## Install host dev tools (sqlx-cli, cargo-watch, cargo-audit)
 setup: ## Full first-time setup: network → env → npm → up → migrate → seed
 	@echo -e "$(CYAN)=== Hermes First-time Setup ===$(NC)"
 	@$(MAKE) network
-	@test -f hermes_backend/.env \
+	@test -f hermes-be/.env \
 		|| (echo -e "$(BLUE)Copying .env.example → .env$(NC)" \
-			&& cp hermes_backend/.env.example hermes_backend/.env \
-			&& echo -e "$(YELLOW)Edit hermes_backend/.env before continuing if needed$(NC)")
+			&& cp hermes-be/.env.example hermes-be/.env \
+			&& echo -e "$(YELLOW)Edit hermes-be/.env before continuing if needed$(NC)")
 	@$(MAKE) fe-install
 	@echo -e "$(BLUE)Starting infrastructure and services...$(NC)"
 	@$(COMPOSE_TRAEFIK) up -d --wait
@@ -190,48 +190,48 @@ health: ## Show only unhealthy/starting containers
 ##@ Database
 
 db-migrate: ## Run all service migrations
-	@$(MAKE) -C hermes_backend db-migrate
+	@$(MAKE) -C hermes-be db-migrate
 
 db-seed: ## Seed all service databases
-	@$(MAKE) -C hermes_backend db-seed
+	@$(MAKE) -C hermes-be db-seed
 
 db-reset: ## Drop volumes, restart, migrate, seed
-	@$(MAKE) -C hermes_backend db-reset
+	@$(MAKE) -C hermes-be db-reset
 
 db-shell: ## Open a psql shell into Postgres
-	@$(MAKE) -C hermes_backend db-shell
+	@$(MAKE) -C hermes-be db-shell
 
 sqlx-prepare: ## Generate SQLx offline query metadata (commit the output)
 	@echo -e "$(BLUE)Preparing SQLx offline metadata...$(NC)"
-	@$(MAKE) -C hermes_backend sqlx-prepare
+	@$(MAKE) -C hermes-be sqlx-prepare
 
 ##@ Backend
 
 build: ## Build all Rust services (debug)
-	@$(MAKE) -C hermes_backend build
+	@$(MAKE) -C hermes-be build
 
 build-release: ## Build all Rust services (release)
-	@$(MAKE) -C hermes_backend build-release
+	@$(MAKE) -C hermes-be build-release
 
 check: ## Cargo check (fast, no codegen)
-	@$(MAKE) -C hermes_backend check
+	@$(MAKE) -C hermes-be check
 
 test: ## Run all Rust tests
-	@$(MAKE) -C hermes_backend test
+	@$(MAKE) -C hermes-be test
 
 test-verbose: ## Run tests with stdout output
-	@$(MAKE) -C hermes_backend test-verbose
+	@$(MAKE) -C hermes-be test-verbose
 
 lint: ## Run clippy (deny warnings)
-	@$(MAKE) -C hermes_backend lint
+	@$(MAKE) -C hermes-be lint
 
 format: ## Format all Rust code
-	@$(MAKE) -C hermes_backend format
+	@$(MAKE) -C hermes-be format
 
 fmt: format ## Alias for format
 
 ci: ## Run full CI suite: fmt-check + lint + test
-	@$(MAKE) -C hermes_backend ci
+	@$(MAKE) -C hermes-be ci
 
 ##@ Frontend
 

@@ -14,7 +14,7 @@ hermes/
 │       ├── traefik.yml         # Static config (entrypoints, providers, metrics)
 │       └── dynamic/
 │           └── routes.yml      # Backend routes, ForwardAuth middleware, rate limiting
-├── hermes_backend/             # Rust Cargo workspace (12 services + 2 shared crates)
+├── hermes-be/             # Rust Cargo workspace (12 services + 2 shared crates)
 │   ├── Cargo.toml              # Workspace-level deps, lint policy, profiles
 │   ├── Makefile                # Dev workflow commands
 │   ├── docker-compose.yml      # Infrastructure services (Postgres, Redis, NATS, ...)
@@ -59,7 +59,7 @@ hermes/
 
 ## Infrastructure Services
 
-All started via `hermes_backend/docker-compose.yml`.
+All started via `hermes-be/docker-compose.yml`.
 
 | Container | Port(s) | Purpose |
 |---|---|---|
@@ -222,7 +222,7 @@ services/channel-service/migrations/
 
 Run all migrations:
 ```bash
-cd hermes_backend && make db-migrate
+cd hermes-be && make db-migrate
 ```
 
 > **Important for tests**: Each service's `tests/common/setup.rs` manually lists all migrations to run in order against a testcontainer Postgres instance. When adding a new migration, it must be added to both the `migrations/` directory **and** the `setup.rs` constants list.
@@ -259,7 +259,7 @@ Traefik :80  (hermes-traefik, hermes-network)
    │
    │  hermes-auth-service:8081 / hermes-user-service:8082 / ...
    ▼
-Rust services  (hermes-network, built from hermes_backend/Dockerfile)
+Rust services  (hermes-network, built from hermes-be/Dockerfile)
    │
    │  hermes-postgres:5432 / hermes-redis:6379 / hermes-nats:4222
    ▼
@@ -294,7 +294,7 @@ cd hermes
 docker compose up -d
 
 # 2. Start infra (Postgres, Redis, NATS, …) and generate SQLx offline metadata
-cd hermes/hermes_backend
+cd hermes/hermes-be
 cp .env.example .env        # edit DATABASE_URL etc. if needed
 make up
 make db-migrate

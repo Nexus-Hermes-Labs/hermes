@@ -48,7 +48,7 @@ hermes/
 │       ├── traefik.yml             # Static config (entrypoints, dashboard, providers)
 │       └── dynamic/
 │           └── routes.yml          # Routers, middlewares (ForwardAuth, rate limit), services
-├── hermes_backend/                 # → github.com/bulutcan99/hermes-be
+├── hermes-be/                 # → github.com/bulutcan99/hermes-be
 │   ├── docker-compose.yml          # All Rust services + PostgreSQL, Redis, NATS, Prometheus, Grafana
 │   └── services/
 │       ├── auth-service/           # :8081 / gRPC :50051
