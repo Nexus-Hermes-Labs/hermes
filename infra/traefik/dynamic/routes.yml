@@ -46,26 +46,26 @@ http:
       service: channel-service
       priority: 30
 
-    # Messaging: channel messages — must match before channel-service (higher priority)
-    messaging-channel-messages:
+    # Chat: channel messages — must match before channel-service (higher priority)
+    chat-channel-messages:
       rule: "PathRegexp(`^/api/v1/channels/[^/]+/messages`)"
       entryPoints:
         - web
       middlewares:
         - jwt-auth
         - rate-limit
-      service: messaging-service
+      service: chat-service
       priority: 40
 
-    # Messaging: /api/v1/messages/:id (edit/delete) and reactions
-    messaging-messages:
+    # Chat: /api/v1/messages/:id (edit/delete) and reactions
+    chat-messages:
       rule: "PathPrefix(`/api/v1/messages`)"
       entryPoints:
         - web
       middlewares:
         - jwt-auth
         - rate-limit
-      service: messaging-service
+      service: chat-service
       priority: 40
 
     # Messaging: /api/v1/conversations (DMs, group DMs)
@@ -144,6 +144,11 @@ http:
       loadBalancer:
         servers:
           - url: "http://hermes-messaging-service:8084"
+
+    chat-service:
+      loadBalancer:
+        servers:
+          - url: "http://hermes-chat-service:8094"
 
     realtime-service:
       loadBalancer:
