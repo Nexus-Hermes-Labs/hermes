@@ -1,6 +1,6 @@
 services:
   traefik:
-    image: traefik:v3.3
+    image: traefik:v3.6
     container_name: hermes-traefik
     ports:
       - "80:80"

@@ -4,9 +4,12 @@
         up up-prod down restart clean \
         dev dev-prod \
         logs logs-traefik logs-backend logs-fe \
-        logs-auth logs-user logs-guild logs-channel \
+        logs-auth logs-user logs-guild logs-channel logs-messaging logs-chat logs-realtime \
+        logs-postgres logs-redis logs-nats \
         ps status health \
-        db-migrate db-seed db-reset db-shell sqlx-prepare \
+        db-migrate db-seed db-reset \
+        db-shell-auth db-shell-user db-shell-guild db-shell-channel db-shell-messaging \
+        sqlx-prepare \
         build build-release check test test-verbose lint format fmt ci \
         fe-install fe-build fe-typecheck fe-lint
 
@@ -18,12 +21,22 @@ RED    := \033[0;31m
 CYAN   := \033[0;36m
 NC     := \033[0m
 
+# ── Build flags ───────────────────────────────────────────────────────────────
+BUILD_FLAG ?=
+
 # ── Compose shortcuts ─────────────────────────────────────────────────────────
-DC              := docker compose
-COMPOSE_TRAEFIK := $(DC) -f docker-compose.yml
-COMPOSE_BACKEND := $(DC) -f hermes-be/docker-compose.yml
-COMPOSE_FE_DEV  := $(DC) -f hermes-fe/docker-compose.yml --profile dev
-COMPOSE_FE_PROD := $(DC) -f hermes-fe/docker-compose.yml --profile prod
+DC                   := docker compose
+COMPOSE_TRAEFIK      := $(DC) -f docker-compose.yml
+COMPOSE_INFRA        := $(DC) -f hermes-be/docker-compose.infra.yml
+COMPOSE_AUTH         := $(DC) -f hermes-be/docker-compose.auth.yml
+COMPOSE_USER         := $(DC) -f hermes-be/docker-compose.user.yml
+COMPOSE_GUILD        := $(DC) -f hermes-be/docker-compose.guild.yml
+COMPOSE_CHANNEL      := $(DC) -f hermes-be/docker-compose.channel.yml
+COMPOSE_MESSAGING    := $(DC) -f hermes-be/docker-compose.messaging.yml
+COMPOSE_CHAT         := $(DC) -f hermes-be/docker-compose.chat.yml
+COMPOSE_REALTIME     := $(DC) -f hermes-be/docker-compose.realtime.yml
+COMPOSE_FE_DEV       := $(DC) -f hermes-fe/docker-compose.yml --profile dev
+COMPOSE_FE_PROD      := $(DC) -f hermes-fe/docker-compose.yml --profile prod
 
 # ── Default target ────────────────────────────────────────────────────────────
 .DEFAULT_GOAL := help
@@ -48,7 +61,7 @@ install: ## Install host dev tools (sqlx-cli, cargo-watch, cargo-audit)
 	@cd hermes-fe && npm install
 	@echo -e "$(GREEN)All dev tools installed$(NC)"
 
-setup: ## Full first-time setup: network → env → npm → up → migrate → seed
+setup: ## Full first-time setup: network → env → npm → up
 	@echo -e "$(CYAN)=== Hermes First-time Setup ===$(NC)"
 	@$(MAKE) network
 	@test -f hermes-be/.env \
@@ -57,14 +70,7 @@ setup: ## Full first-time setup: network → env → npm → up → migrate → 
 			&& echo -e "$(YELLOW)Edit hermes-be/.env before continuing if needed$(NC)")
 	@$(MAKE) fe-install
 	@echo -e "$(BLUE)Starting infrastructure and services...$(NC)"
-	@$(COMPOSE_TRAEFIK) up -d --wait
-	@$(COMPOSE_BACKEND) up -d --wait
-	@echo -e "$(BLUE)Running migrations...$(NC)"
-	@$(MAKE) db-migrate
-	@echo -e "$(BLUE)Seeding database...$(NC)"
-	@$(MAKE) db-seed
-	@echo -e "$(BLUE)Starting frontend (dev)...$(NC)"
-	@$(COMPOSE_FE_DEV) up -d
+	@$(MAKE) up
 	@echo ""
 	@echo -e "$(GREEN)Setup complete!$(NC)"
 	@echo -e "  App:       $(CYAN)http://localhost$(NC)"
@@ -72,7 +78,21 @@ setup: ## Full first-time setup: network → env → npm → up → migrate → 
 	@echo -e "  Grafana:   $(CYAN)http://localhost:3000$(NC)"
 	@echo -e "  Mailpit:   $(CYAN)http://localhost:8025$(NC)"
 
-fresh: clean setup ## Nuke everything and set up from scratch
+fresh: clean ## Nuke everything, rebuild all images, and set up from scratch
+	@echo -e "$(CYAN)=== Hermes Fresh Start ===$(NC)"
+	@$(MAKE) network
+	@test -f hermes-be/.env \
+		|| (echo -e "$(BLUE)Copying .env.example → .env$(NC)" \
+			&& cp hermes-be/.env.example hermes-be/.env \
+			&& echo -e "$(YELLOW)Edit hermes-be/.env before continuing if needed$(NC)")
+	@$(MAKE) fe-install
+	@$(MAKE) up BUILD_FLAG=--build
+	@echo ""
+	@echo -e "$(GREEN)Setup complete!$(NC)"
+	@echo -e "  App:       $(CYAN)http://localhost$(NC)"
+	@echo -e "  Traefik:   $(CYAN)http://localhost:8080$(NC)"
+	@echo -e "  Grafana:   $(CYAN)http://localhost:3000$(NC)"
+	@echo -e "  Mailpit:   $(CYAN)http://localhost:8025$(NC)"
 
 ##@ Network
 
@@ -87,8 +107,16 @@ network: ## Create shared Docker network (idempotent)
 up: network ## Start all containers without migrations (dev frontend)
 	@echo -e "$(BLUE)Starting Traefik...$(NC)"
 	@$(COMPOSE_TRAEFIK) up -d --wait
-	@echo -e "$(BLUE)Starting backend + infra...$(NC)"
-	@$(COMPOSE_BACKEND) up -d --wait
+	@echo -e "$(BLUE)Starting backend infra...$(NC)"
+	@$(COMPOSE_INFRA) up -d --wait
+	@echo -e "$(BLUE)Starting backend services...$(NC)"
+	@$(COMPOSE_AUTH)      up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_USER)      up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_GUILD)     up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_CHANNEL)   up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_MESSAGING) up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_CHAT)      up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_REALTIME)  up -d $(BUILD_FLAG) 2>&1 | grep -v "Found orphan"
 	@echo -e "$(BLUE)Starting frontend (dev)...$(NC)"
 	@$(COMPOSE_FE_DEV) up -d
 	@echo -e "$(GREEN)All services up → http://localhost$(NC)"
@@ -96,8 +124,16 @@ up: network ## Start all containers without migrations (dev frontend)
 up-prod: network ## Start all containers in production mode
 	@echo -e "$(BLUE)Starting Traefik...$(NC)"
 	@$(COMPOSE_TRAEFIK) up -d --wait
-	@echo -e "$(BLUE)Starting backend + infra...$(NC)"
-	@$(COMPOSE_BACKEND) up -d --wait
+	@echo -e "$(BLUE)Starting backend infra...$(NC)"
+	@$(COMPOSE_INFRA) up -d --wait
+	@echo -e "$(BLUE)Starting backend services...$(NC)"
+	@$(COMPOSE_AUTH) up -d 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_USER) up -d 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_GUILD) up -d 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_CHANNEL) up -d 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_MESSAGING) up -d 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_CHAT) up -d 2>&1 | grep -v "Found orphan"
+	@$(COMPOSE_REALTIME) up -d 2>&1 | grep -v "Found orphan"
 	@echo -e "$(BLUE)Building & starting frontend (prod)...$(NC)"
 	@$(COMPOSE_FE_PROD) up -d --build
 	@echo -e "$(GREEN)All services up → http://localhost$(NC)"
@@ -122,8 +158,16 @@ down: ## Stop all services (all profiles)
 	@echo -e "$(YELLOW)Stopping frontend...$(NC)"
 	@$(COMPOSE_FE_DEV)  down 2>/dev/null || true
 	@$(COMPOSE_FE_PROD) down 2>/dev/null || true
-	@echo -e "$(YELLOW)Stopping backend + infra...$(NC)"
-	@$(COMPOSE_BACKEND) down
+	@echo -e "$(YELLOW)Stopping backend services...$(NC)"
+	@$(COMPOSE_AUTH)      down 2>/dev/null || true
+	@$(COMPOSE_USER)      down 2>/dev/null || true
+	@$(COMPOSE_GUILD)     down 2>/dev/null || true
+	@$(COMPOSE_CHANNEL)   down 2>/dev/null || true
+	@$(COMPOSE_MESSAGING) down 2>/dev/null || true
+	@$(COMPOSE_CHAT)      down 2>/dev/null || true
+	@$(COMPOSE_REALTIME)  down 2>/dev/null || true
+	@echo -e "$(YELLOW)Stopping backend infra...$(NC)"
+	@$(COMPOSE_INFRA) down
 	@echo -e "$(YELLOW)Stopping Traefik...$(NC)"
 	@$(COMPOSE_TRAEFIK) down
 	@echo -e "$(GREEN)All services stopped$(NC)"
@@ -133,10 +177,17 @@ restart: down up ## Restart all services (dev mode)
 clean: ## Remove all containers, volumes, and the shared network
 	@echo -e "$(RED)Cleaning up all Docker resources...$(NC)"
 	@docker ps -aq --filter name=hermes | xargs -r docker rm -f 2>/dev/null || true
-	@$(COMPOSE_FE_DEV)  down -v 2>/dev/null || true
-	@$(COMPOSE_FE_PROD) down -v 2>/dev/null || true
-	@$(COMPOSE_BACKEND) down -v
-	@$(COMPOSE_TRAEFIK) down -v
+	@$(COMPOSE_FE_DEV)    down -v 2>/dev/null || true
+	@$(COMPOSE_FE_PROD)   down -v 2>/dev/null || true
+	@$(COMPOSE_AUTH)      down -v 2>/dev/null || true
+	@$(COMPOSE_USER)      down -v 2>/dev/null || true
+	@$(COMPOSE_GUILD)     down -v 2>/dev/null || true
+	@$(COMPOSE_CHANNEL)   down -v 2>/dev/null || true
+	@$(COMPOSE_MESSAGING) down -v 2>/dev/null || true
+	@$(COMPOSE_CHAT)      down -v 2>/dev/null || true
+	@$(COMPOSE_REALTIME)  down -v 2>/dev/null || true
+	@$(COMPOSE_INFRA)     down -v
+	@$(COMPOSE_TRAEFIK)   down -v
 	@docker network rm hermes-network 2>/dev/null || true
 	@echo -e "$(GREEN)Cleanup complete$(NC)"
 
@@ -150,29 +201,41 @@ logs: ## Tail logs from all hermes containers (interleaved)
 logs-traefik: ## Traefik logs
 	@$(COMPOSE_TRAEFIK) logs -f
 
-logs-backend: ## All backend + infra logs
-	@$(COMPOSE_BACKEND) logs -f
+logs-backend: ## All backend infra logs
+	@$(COMPOSE_INFRA) logs -f
 
 logs-fe: ## Frontend logs (dev or prod, whichever is running)
 	@$(COMPOSE_FE_DEV) logs -f 2>/dev/null || $(COMPOSE_FE_PROD) logs -f
 
 logs-auth: ## auth-service logs
-	@$(COMPOSE_BACKEND) logs -f auth-service
+	@$(COMPOSE_AUTH) logs -f auth-service
 
 logs-user: ## user-service logs
-	@$(COMPOSE_BACKEND) logs -f user-service
+	@$(COMPOSE_USER) logs -f user-service
 
 logs-guild: ## guild-service logs
-	@$(COMPOSE_BACKEND) logs -f guild-service
+	@$(COMPOSE_GUILD) logs -f guild-service
 
 logs-channel: ## channel-service logs
-	@$(COMPOSE_BACKEND) logs -f channel-service
+	@$(COMPOSE_CHANNEL) logs -f channel-service
+
+logs-messaging: ## messaging-service logs
+	@$(COMPOSE_MESSAGING) logs -f messaging-service
+
+logs-chat: ## chat-service logs
+	@$(COMPOSE_CHAT) logs -f chat-service
+
+logs-realtime: ## realtime-service logs
+	@$(COMPOSE_REALTIME) logs -f realtime-service
 
 logs-postgres: ## PostgreSQL logs
-	@$(COMPOSE_BACKEND) logs -f postgres
+	@$(COMPOSE_INFRA) logs -f postgres
 
 logs-redis: ## Redis logs
-	@$(COMPOSE_BACKEND) logs -f redis
+	@$(COMPOSE_INFRA) logs -f redis
+
+logs-nats: ## NATS logs
+	@$(COMPOSE_INFRA) logs -f nats
 
 ##@ Status
 
@@ -199,8 +262,20 @@ db-seed: ## Seed all service databases
 db-reset: ## Drop volumes, restart, migrate, seed
 	@$(MAKE) -C hermes-be db-reset
 
-db-shell: ## Open a psql shell into Postgres
-	@$(MAKE) -C hermes-be db-shell
+db-shell-auth: ## Open psql shell for hermes_auth
+	@$(MAKE) -C hermes-be db-shell-auth
+
+db-shell-user: ## Open psql shell for hermes_user
+	@$(MAKE) -C hermes-be db-shell-user
+
+db-shell-guild: ## Open psql shell for hermes_guild
+	@$(MAKE) -C hermes-be db-shell-guild
+
+db-shell-channel: ## Open psql shell for hermes_channel
+	@$(MAKE) -C hermes-be db-shell-channel
+
+db-shell-messaging: ## Open psql shell for hermes_messaging
+	@$(MAKE) -C hermes-be db-shell-messaging
 
 sqlx-prepare: ## Generate SQLx offline query metadata (commit the output)
 	@echo -e "$(BLUE)Preparing SQLx offline metadata...$(NC)"
