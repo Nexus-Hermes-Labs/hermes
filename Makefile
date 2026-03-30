@@ -26,15 +26,15 @@ BUILD_FLAG ?=
 
 # ── Compose shortcuts ─────────────────────────────────────────────────────────
 DC                   := docker compose
-COMPOSE_TRAEFIK      := $(DC) -f docker-compose.yml
-COMPOSE_INFRA        := $(DC) -f hermes-be/docker-compose.infra.yml
-COMPOSE_AUTH         := $(DC) -f hermes-be/docker-compose.auth.yml
-COMPOSE_USER         := $(DC) -f hermes-be/docker-compose.user.yml
-COMPOSE_GUILD        := $(DC) -f hermes-be/docker-compose.guild.yml
-COMPOSE_CHANNEL      := $(DC) -f hermes-be/docker-compose.channel.yml
-COMPOSE_MESSAGING    := $(DC) -f hermes-be/docker-compose.messaging.yml
-COMPOSE_CHAT         := $(DC) -f hermes-be/docker-compose.chat.yml
-COMPOSE_REALTIME     := $(DC) -f hermes-be/docker-compose.realtime.yml
+COMPOSE_TRAEFIK      := $(DC) -f infra/traefik/docker-compose.yml
+COMPOSE_INFRA        := $(DC) -f hermes-be/infra/docker-compose.yml
+COMPOSE_AUTH         := $(DC) -f hermes-be/services/auth-service/docker-compose.yml
+COMPOSE_USER         := $(DC) -f hermes-be/services/user-service/docker-compose.yml
+COMPOSE_GUILD        := $(DC) -f hermes-be/services/guild-service/docker-compose.yml
+COMPOSE_CHANNEL      := $(DC) -f hermes-be/services/channel-service/docker-compose.yml
+COMPOSE_MESSAGING    := $(DC) -f hermes-be/services/messaging-service/docker-compose.yml
+COMPOSE_CHAT         := $(DC) -f hermes-be/services/chat-service/docker-compose.yml
+COMPOSE_REALTIME     := $(DC) -f hermes-be/services/realtime-service/docker-compose.yml
 COMPOSE_FE_DEV       := $(DC) -f hermes-fe/docker-compose.yml --profile dev
 COMPOSE_FE_PROD      := $(DC) -f hermes-fe/docker-compose.yml --profile prod
 
