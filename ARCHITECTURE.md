@@ -67,7 +67,9 @@ All started via `hermes-be/docker-compose.yml`.
 | `hermes-redis` | 6379 | Redis 7 — caching, session tokens, presence |
 | `hermes-nats` | 4222 / 8222 | NATS 2.10 with JetStream — async event bus |
 | `hermes-prometheus` | 9090 | Metrics scraping |
-| `hermes-grafana` | 3000 | Metrics dashboards (admin/admin) |
+| `hermes-loki` | 3100 | Grafana Loki — centralized log aggregation (7-day retention) |
+| `hermes-promtail` | — | Promtail — collects Docker container logs and pushes to Loki |
+| `hermes-grafana` | 3000 | Dashboards for metrics (Prometheus) and logs (Loki) (admin/admin) |
 | `hermes-mailpit` | 1025 / 8025 | SMTP catcher for dev email (UI at :8025) |
 | `hermes-schemathesis` | — | API contract testing (profile: `testing`) |
 
@@ -123,7 +125,7 @@ Traefik :80
   └── /api/v1/** ──► ForwardAuth ──► GET /internal/verify
                                           auth-service :8081
                                                │
-                              ┌────────────────┴─────────────────┐
+                              ┌────────────────┴──────────────────┐
                               │ 200 + X-User-Id                   │ 401
                               │      X-User-Role                  │
                               │      X-User-Email                 ▼
@@ -275,12 +277,152 @@ Stub services (chat, voice, presence, realtime, media, notification, search, ai)
 | Signal | Stack | Endpoint |
 |---|---|---|
 | Structured logs | `tracing` + `tracing-subscriber` (Pretty dev / JSON prod) | stdout |
+| Log aggregation | Promtail → Grafana Loki (7-day retention, filesystem storage) | `http://localhost:3100` |
 | Metrics | `metrics` + `metrics-exporter-prometheus` | `GET /metrics` on each service |
 | Prometheus scrape | `hermes-prometheus` | `http://localhost:9090` |
-| Dashboards | `hermes-grafana` | `http://localhost:3000` (admin/admin) |
+| Dashboards | `hermes-grafana` (Prometheus + Loki datasources auto-provisioned) | `http://localhost:3000` (admin/admin) |
 | Traefik metrics | Prometheus exporter (built-in) | scraped by Prometheus |
 
+### Centralized Logging (Loki)
+
+Promtail discovers all `hermes-*` Docker containers via the Docker socket and pushes their stdout/stderr to Loki. No application code changes required.
+
+```
+All hermes-* containers (stdout/stderr)
+        │
+        ▼
+    Promtail  ──push──►  Loki  ──query──►  Grafana
+    (docker_sd_configs)   (:3100)           (Explore → Loki)
+```
+
+**Configuration files:**
+- `hermes-be/infra/loki/loki-config.yml` — Loki server config (TSDB, filesystem storage, retention)
+- `hermes-be/infra/promtail/promtail-config.yml` — Scrape config, label extraction, JSON pipeline
+- `hermes-be/infra/grafana/provisioning/datasources/loki.yml` — Auto-provisioned Grafana datasource
+
+**Example queries in Grafana Explore:**
+- `{service="auth-service"}` — logs from a single service
+- `{container=~"hermes-.*"}` — all container logs
+- `{container=~"hermes-.*"} |= "error"` — full-text error search
+
 Each service exposes a `/health/live` and `/health/ready` endpoint.
+
+---
+
+## Data Architecture
+
+### MVP: Shared PostgreSQL
+
+All services share one PostgreSQL instance with separate databases per service (initialized via `hermes-be/infra/postgres/init.sql`). No cross-service foreign keys.
+
+**Rationale:** Simpler for MVP — no distributed transactions, ACID guarantees, easy local development.
+
+**Trade-offs:** Tight coupling, single point of failure, limited per-service scaling. Post-MVP will move to database-per-service with fully isolated instances.
+
+SQLx with compile-time query checking is used throughout. All queries are verified against the live schema at compile time via `sqlx::query!()`.
+
+### Post-MVP: Database per Service
+
+```
++-------------+  +-------------+  +-------------+  +-------------+
+| Auth DB     |  | User DB     |  | Guild DB    |  | Chat DB     |
+| - sessions  |  | - profiles  |  | - guilds    |  | - messages  |
+| - tokens    |  | - friends   |  | - members   |  | - reactions |
+|             |  | - blocks    |  | - roles     |  | - attachments|
++-------------+  +-------------+  +-------------+  +-------------+
+```
+
+### Caching Strategy (Redis)
+
+| Cache | TTL | Purpose |
+|---|---|---|
+| Session cache | 15 min | JWT claims, active sessions |
+| User profile | 1 hr | Frequently accessed user data |
+| Relationship | 5 min | `are_friends(A,B)`, `is_blocked(A,B)` |
+| Presence | live | Online status, last seen |
+| Message cache | — | Last 50 messages per channel |
+| Connection state | live | Which users are connected to realtime-service |
+
+---
+
+## AI Translation Pipeline
+
+```
+User sends message
+       │
+       ▼
+  chat-service (stores original, publishes NATS: message.created)
+       │
+       ▼
+  ai-service (detects language, translates to target languages)
+       │
+       ▼  NATS: translation.completed
+  realtime-service (delivers translated message to recipients
+                    based on their language preferences)
+```
+
+**Phase 3a — Text**: Language detection + translation, original preserved alongside translations.
+
+**Phase 3b — Voice STT**: Audio stream from voice-service → ai-service → real-time transcription + translated subtitles.
+
+**Phase 3c — Voice TTS**: Transcribed text → synthesized speech in target language. Target: <500ms speech-to-speech end-to-end.
+
+---
+
+## Security Architecture
+
+```
++------------------------------------------+
+| Layer 1: Network (Firewall, DDoS)        |
++------------------------------------------+
+| Layer 2: Traefik (TLS, rate limit, CORS) |
++------------------------------------------+
+| Layer 3: Authentication (JWT ForwardAuth)|
++------------------------------------------+
+| Layer 4: Authorization (RBAC + bitflags) |
++------------------------------------------+
+| Layer 5: Data (Argon2, parameterized SQL)|
++------------------------------------------+
+```
+
+**Measures:**
+- TLS 1.3 termination at Traefik
+- Rate limiting at edge (100 req/s) + Governor crate on auth endpoints as defense-in-depth
+- Argon2 password hashing with salt
+- JWT HS256 with separate secrets for access and refresh tokens
+- All SQL via SQLx parameterized queries (compile-time checked — no injection possible)
+- `validator` crate on all request DTOs
+- `unsafe_code` forbidden, `unwrap_used`/`panic` denied at workspace level
+- Backend services not exposed directly — only accessible from Traefik and each other
+
+---
+
+## Scalability Strategy
+
+### Horizontal Scaling
+
+All services are stateless — no in-memory session state. Any pod can handle any request. Independent scaling per service.
+
+- Auth state: JWT (stateless) + Redis sessions
+- Guild/channel context: fetched from DB or Redis per request
+- realtime-service scales horizontally with Redis-backed connection state
+
+### Database Scaling Path
+
+1. **MVP**: Shared PostgreSQL, SQLx connection pool
+2. **Post-MVP**: Database per service, read replicas
+3. **Scale**: PgBouncer, sharding by `guild_id` or `user_id`
+
+### Performance Targets
+
+| Metric | Target |
+|---|---|
+| p50 response time | <50ms |
+| p95 response time | <100ms |
+| p99 response time | <200ms |
+| AI translation (text) | <200ms |
+| AI translation (voice) | <500ms end-to-end |
+| Throughput per pod | 10k req/s |
 
 ---
 
@@ -327,7 +469,8 @@ docker compose up --build -d  # rebuild and restart all services
 |---|---|
 | `http://localhost` | Frontend (Vite dev server via Traefik) |
 | `http://localhost:8080` | Traefik dashboard |
-| `http://localhost:3000` | Grafana (admin/admin) |
+| `http://localhost:3000` | Grafana (admin/admin) — metrics + logs |
+| `http://localhost:3100` | Loki (log aggregation API) |
 | `http://localhost:9090` | Prometheus |
 | `http://localhost:8025` | Mailpit (email catcher) |
 | `http://localhost:8222` | NATS monitoring |

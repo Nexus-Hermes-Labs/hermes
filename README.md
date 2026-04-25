@@ -141,5 +141,6 @@ Rate limit: 100 req/s average, burst 50 (all routes).
 | Redis | 6379 | — |
 | NATS | 4222 | — |
 | Prometheus | 9090 | — |
+| Loki | 3100 | — |
 | Grafana | 3000 | — |
 | Mailpit UI | 8025 | — |
