@@ -20,6 +20,8 @@ Quick reference for every external technology Hermes depends on: what it is, why
   - [SQLx](#sqlx)
   - [Redis](#redis)
   - [NATS (JetStream)](#nats-jetstream)
+- [Configuration](#configuration)
+  - [Consul KV + figment](#consul-kv--figment)
 - [Security](#security)
   - [JWT (jsonwebtoken)](#jwt-jsonwebtoken)
   - [Argon2 + SHA-256](#argon2--sha-256)
@@ -175,6 +177,45 @@ event_publisher.publish(
 ```
 
 Future: `notification-service` subscribes to `auth.user.registered` and sends the welcome email — no synchronous coupling between the two.
+
+---
+
+## Configuration
+
+### Consul KV + figment
+
+**What.** [Consul](https://www.consul.io) is HashiCorp's service-mesh / KV store; we use only the KV side. [`figment`](https://docs.rs/figment) is the Rust config-merging library that layers `.env`, env vars, and Consul JSON into one `Config` struct.
+
+**Why.** With 13 services, copying the same JWT secret / NATS URL / DB password into 13 `docker-compose.yml` files invites drift. Consul KV gives one place to store cross-service defaults; `figment` lets each service merge those defaults with environment-specific overrides.
+
+**How the layers stack** (last layer wins, see `services/common/common-config/src/lib.rs::Config::load`):
+
+1. **Consul `config/application/data`** — shared baseline migrated from workspace `.env.example` (DB user, JWT secret, default log level, etc.).
+2. **Consul `config/{service_name}/data`** — service-specific baseline migrated from `services/{name}/.env.example` (port, gRPC port, DB name, etc.).
+3. **`.env` files** — workspace `.env` then `services/{name}/.env`, loaded by `dotenvy` for local cargo-run mode.
+4. **Environment variables** (`APP_*`) — compose, CI, or anything the host process sets. **Authoritative.**
+
+**Why env wins over Consul.** Hermes runs in two modes that need different hostnames:
+- `make up` (containers) — compose sets `APP_DATABASE__HOST=hermes-postgres`.
+- `make run-auth` (host) — developer's `.env` sets `APP_DATABASE__HOST=127.0.0.1`.
+
+Consul holds the *checked-in baseline* (used identically in both modes); env vars are the per-mode override. Operators changing values in Consul still need to restart the affected service — `Config::load` runs only at startup, there is no live-watch.
+
+**Migration script** (`hermes-be/scripts/config-migration/migrate_to_consul.py`) reads every `.env.example` (workspace + per-service) and PUTs them to `config/{name}/data` as JSON. Stdlib only — no `pip install` needed. Idempotent:
+
+```bash
+make config-migrate              # uses CONSUL_URL=http://127.0.0.1:8500 by default
+docker exec hermes-consul curl -s 'http://localhost:8500/v1/kv/config/?keys'
+```
+
+**Where.**
+- Container: `hermes-be/infra/docker-compose.yml` (the `consul` service, `agent -dev` mode).
+- Reader: `services/common/common-config/src/lib.rs::fetch_consul_kv` — uses `ureq` (sync, no tokio runtime dependency) since `Config::load` runs from inside `#[tokio::main]` startup. `reqwest::blocking` is documented-discouraged in async contexts.
+- UI: http://localhost:8500 — Consul's web UI for browsing/editing keys live.
+
+**Dev-mode caveats.** `consul agent -dev` has **no auth, no ACLs, no TLS** — anyone on `hermes-network` can read or overwrite the KV. Plaintext secrets (JWT keys, DB passwords) sit in Consul KV. Fine for dev; production needs Consul ACLs + TLS, or Vault for the secret tier.
+
+**Failure mode.** `fetch_consul_kv` logs to stderr and returns `None` when Consul is unreachable, returns 404, or sends an empty body. The env layer alone produces a complete config, so a missing Consul never *prevents* startup — it just degrades to env-only.
 
 ---
 
@@ -383,6 +424,14 @@ The shared `hermes-network` is created once (`make network`) and every compose f
    │Postgres │ (one DB per   │Redis │ (sessions,     │  NATS    │ (events:
    │ :5432   │  service)     │:6379 │  presence,     │  :4222   │  user.registered,
    └─────────┘               └──────┘  rate limits)  └──────────┘  guild.created, …)
+
+Configuration sidecar (read at boot)
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │  Consul :8500   (KV: config/application + config/{service}/data)       │
+   │       ▲                                                                 │
+   │       │ each service reads at startup; env vars override               │
+   │  ─── migrate_to_consul.py PUTs from .env.example files                 │
+   └────────────────────────────────────────────────────────────────────────┘
 
 Observability sidecar (same Docker network, scrapes/tails/receives from the above)
    ┌────────────────────────────────────────────────────────────────────────┐
