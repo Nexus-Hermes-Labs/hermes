@@ -7,7 +7,7 @@
         logs-auth logs-user logs-guild logs-channel logs-messaging logs-chat logs-realtime \
         logs-postgres logs-redis logs-nats \
         ps status health \
-        db-migrate db-seed config-migrate db-reset \
+        db-migrate db-seed db-reset \
         db-shell-auth db-shell-user db-shell-guild db-shell-channel db-shell-messaging \
         sqlx-prepare \
         build build-release check test test-verbose lint format fmt ci \
@@ -71,7 +71,6 @@ setup: ## Full first-time setup: network → env → npm → up
 	@$(MAKE) fe-install
 	@echo -e "$(BLUE)Starting infrastructure and services...$(NC)"
 	@$(MAKE) up
-	@$(MAKE) config-migrate
 	@echo ""
 	@echo -e "$(GREEN)Setup complete!$(NC)"
 	@echo -e "  App:       $(CYAN)http://localhost$(NC)"
@@ -88,7 +87,6 @@ fresh: clean ## Nuke everything, rebuild all images, and set up from scratch
 			&& echo -e "$(YELLOW)Edit hermes-be/.env before continuing if needed$(NC)")
 	@$(MAKE) fe-install
 	@$(MAKE) up BUILD_FLAG=--build
-	@$(MAKE) config-migrate
 	@echo ""
 	@echo -e "$(GREEN)Setup complete!$(NC)"
 	@echo -e "  App:       $(CYAN)http://localhost$(NC)"
@@ -142,7 +140,6 @@ up-prod: network ## Start all containers in production mode
 
 dev: network ## Start dev environment: up → migrate → seed
 	@$(MAKE) up
-	@$(MAKE) config-migrate
 	@echo -e "$(BLUE)Running migrations...$(NC)"
 	@$(MAKE) db-migrate
 	@echo -e "$(BLUE)Seeding database...$(NC)"
@@ -151,7 +148,6 @@ dev: network ## Start dev environment: up → migrate → seed
 
 dev-prod: network ## Start prod environment: up-prod → migrate → seed
 	@$(MAKE) up-prod
-	@$(MAKE) config-migrate
 	@echo -e "$(BLUE)Running migrations...$(NC)"
 	@$(MAKE) db-migrate
 	@echo -e "$(BLUE)Seeding database...$(NC)"
@@ -262,9 +258,6 @@ db-migrate: ## Run all service migrations
 
 db-seed: ## Seed all service databases
 	@$(MAKE) -C hermes-be db-seed
-
-config-migrate: ## Migrate configuration to Consul
-	@$(MAKE) -C hermes-be config-migrate
 
 db-reset: ## Drop volumes, restart, migrate, seed
 	@$(MAKE) -C hermes-be db-reset
