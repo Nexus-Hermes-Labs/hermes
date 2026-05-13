@@ -1,7 +1,7 @@
 .PHONY: help \
         network \
         setup fresh install \
-        up up-prod down restart clean \
+        up up-prod down restart clean prune \
         dev dev-prod \
         logs logs-traefik logs-backend logs-fe \
         logs-auth logs-user logs-guild logs-channel logs-messaging logs-chat logs-realtime \
@@ -174,22 +174,32 @@ down: ## Stop all services (all profiles)
 
 restart: down up ## Restart all services (dev mode)
 
-clean: ## Remove all containers, volumes, and the shared network
+clean: ## Remove all containers, volumes, locally-built images, and the shared network
 	@echo -e "$(RED)Cleaning up all Docker resources...$(NC)"
 	@docker ps -aq --filter name=hermes | xargs -r docker rm -f 2>/dev/null || true
-	@$(COMPOSE_FE_DEV)    down -v 2>/dev/null || true
-	@$(COMPOSE_FE_PROD)   down -v 2>/dev/null || true
-	@$(COMPOSE_AUTH)      down -v 2>/dev/null || true
-	@$(COMPOSE_USER)      down -v 2>/dev/null || true
-	@$(COMPOSE_GUILD)     down -v 2>/dev/null || true
-	@$(COMPOSE_CHANNEL)   down -v 2>/dev/null || true
-	@$(COMPOSE_MESSAGING) down -v 2>/dev/null || true
-	@$(COMPOSE_CHAT)      down -v 2>/dev/null || true
-	@$(COMPOSE_REALTIME)  down -v 2>/dev/null || true
-	@$(COMPOSE_INFRA)     down -v
-	@$(COMPOSE_TRAEFIK)   down -v
+	@$(COMPOSE_FE_DEV)    down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_FE_PROD)   down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_AUTH)      down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_USER)      down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_GUILD)     down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_CHANNEL)   down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_MESSAGING) down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_CHAT)      down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_REALTIME)  down -v --rmi local 2>/dev/null || true
+	@$(COMPOSE_INFRA)     down -v --rmi local
+	@$(COMPOSE_TRAEFIK)   down -v --rmi local
 	@docker network rm hermes-network 2>/dev/null || true
+	@echo -e "$(BLUE)Pruning dangling images and build cache...$(NC)"
+	@docker image prune -f >/dev/null
+	@docker builder prune -f >/dev/null
 	@echo -e "$(GREEN)Cleanup complete$(NC)"
+
+prune: ## Deep clean: dangling images + builder cache (keeps running containers)
+	@echo -e "$(BLUE)Pruning dangling images...$(NC)"
+	@docker image prune -f
+	@echo -e "$(BLUE)Pruning builder cache...$(NC)"
+	@docker builder prune -f
+	@echo -e "$(GREEN)Prune complete$(NC)"
 
 ##@ Logs
 
